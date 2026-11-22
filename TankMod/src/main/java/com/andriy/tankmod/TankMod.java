@@ -1,23 +1,24 @@
 package com.andriy.tankmod;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import net.minecraft.client.Minecraft;
+import com.mojang.math.Axis;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.NoopRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -27,7 +28,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ThrowableProjectile;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
@@ -50,9 +50,6 @@ public class TankMod {
 
     public static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MODID);
     public static final DeferredRegister<EntityType<?>> ENTITIES = DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, MODID);
-
-    public static final RegistryObject<Item> TANK_CANNON = ITEMS.register("tank_cannon",
-            () -> new TankCannonItem(new Item.Properties().stacksTo(1)));
 
     public static final RegistryObject<Item> TANK_SPAWNER = ITEMS.register("tank_spawner",
             () -> new TankSpawnerItem(new Item.Properties().stacksTo(16)));
@@ -80,7 +77,6 @@ public class TankMod {
 
     private void addToCreativeTab(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.COMBAT) {
-            event.accept(TANK_CANNON.get());
             event.accept(TANK_SPAWNER.get());
         }
     }
@@ -94,7 +90,6 @@ public class TankMod {
         }
     }
 
-    // Предмет для спавна танка (ПКМ по земле)
     public static class TankSpawnerItem extends Item {
         public TankSpawnerItem(Properties properties) {
             super(properties);
@@ -120,7 +115,6 @@ public class TankMod {
         }
     }
 
-    // Сущность танка (посадка, езда, стрельба на пробел)
     public static class TankEntity extends Entity {
         private int shootCooldown = 0;
 
@@ -159,10 +153,8 @@ public class TankMod {
 
         @Override
         public InteractionResult interact(Player player, InteractionHand hand) {
-            if (!this.level().isClientSide) {
-                if (this.getPassengers().isEmpty()) {
-                    player.startRiding(this);
-                }
+            if (!this.level().isClientSide && this.getPassengers().isEmpty()) {
+                player.startRiding(this);
             }
             return InteractionResult.sidedSuccess(this.level().isClientSide);
         }
@@ -176,7 +168,9 @@ public class TankMod {
         @Override
         public void tick() {
             super.tick();
-            if (shootCooldown > 0) shootCooldown--;
+            if (shootCooldown > 0) {
+                shootCooldown--;
+            }
 
             LivingEntity driver = this.getControllingPassenger();
             Vec3 motion = this.getDeltaMovement();
@@ -196,12 +190,7 @@ public class TankMod {
 
                 this.setDeltaMovement(vx, dy, vz);
 
-                if (this.level().isClientSide && Minecraft.getInstance().player == player) {
-                    if (Minecraft.getInstance().options.keyJump.isDown() && shootCooldown == 0) {
-                        // Сигнал стрельбы обрабатывается через предмет или пакет, дублируем через локальный триггер
-                    }
-                }
-                if (!this.level().isClientSide && player.isJumping && shootCooldown == 0) {
+                if (!this.level().isClientSide && player.isJumping() && shootCooldown == 0) {
                     fireCannon(player);
                     shootCooldown = 30;
                 }
@@ -226,7 +215,6 @@ public class TankMod {
         }
     }
 
-    // Визуал танка из блоков (корпус из зелёного терракота/железа + башня + ствол)
     public static class TankRenderer extends EntityRenderer<TankEntity> {
         private final BlockRenderDispatcher blockRenderer;
 
@@ -240,7 +228,7 @@ public class TankMod {
         public void render(TankEntity entity, float entityYaw, float partialTicks, PoseStack poseStack, MultiBufferSource buffer, int packedLight) {
             super.render(entity, entityYaw, partialTicks, poseStack, buffer, packedLight);
             poseStack.pushPose();
-            poseStack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(180.0F - entityYaw));
+            poseStack.mulPose(Axis.YP.rotationDegrees(180.0F - entityYaw));
 
             // Корпус
             poseStack.pushPose();
@@ -267,39 +255,11 @@ public class TankMod {
         }
 
         @Override
-        public net.minecraft.resources.ResourceLocation getTextureLocation(TankEntity entity) {
-            return net.minecraft.client.renderer.texture.TextureAtlas.LOCATION_BLOCKS;
+        public ResourceLocation getTextureLocation(TankEntity entity) {
+            return TextureAtlas.LOCATION_BLOCKS;
         }
     }
 
-    // Ручная пушка (оставлена как запасной предмет)
-    public static class TankCannonItem extends Item {
-        public TankCannonItem(Properties properties) {
-            super(properties);
-        }
-
-        @Override
-        public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
-            ItemStack stack = player.getItemInHand(hand);
-            if (!level.isClientSide) {
-                TankShellEntity shell = new TankShellEntity(TANK_SHELL.get(), player, level);
-                Vec3 look = player.getLookAngle();
-                shell.setPos(
-                        player.getX() + look.x * 1.4,
-                        player.getEyeY() - 0.1 + look.y * 1.4,
-                        player.getZ() + look.z * 1.4
-                );
-                shell.shootFromRotation(player, player.getXRot(), player.getYRot(), 0.0f, 3.2f, 0.3f);
-                level.addFreshEntity(shell);
-
-                level.playSound(null, player.blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundSource.PLAYERS, 1.5f, 0.6f);
-                player.getCooldowns().addCooldown(this, 25);
-            }
-            return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
-        }
-    }
-
-    // Снаряд
     public static class TankShellEntity extends ThrowableProjectile {
         private int ageTicks = 0;
 
