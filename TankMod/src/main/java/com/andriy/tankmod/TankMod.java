@@ -1,5 +1,6 @@
 package com.andriy.tankmod;
 
+import net.minecraft.client.renderer.entity.NoopRenderer;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
@@ -17,8 +18,11 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.EntityRenderersEvent;
 import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.registries.DeferredRegister;
@@ -55,6 +59,14 @@ public class TankMod {
         }
     }
 
+    @Mod.EventBusSubscriber(modid = MODID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.MOD)
+    public static class ClientEvents {
+        @SubscribeEvent
+        public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
+            event.registerEntityRenderer(TANK_SHELL.get(), NoopRenderer::new);
+        }
+    }
+
     public static class TankCannonItem extends Item {
         public TankCannonItem(Properties properties) {
             super(properties);
@@ -66,8 +78,12 @@ public class TankMod {
             if (!level.isClientSide) {
                 TankShellEntity shell = new TankShellEntity(TANK_SHELL.get(), player, level);
                 Vec3 look = player.getLookAngle();
-                shell.setPos(player.getX() + look.x * 1.2, player.getEyeY() - 0.1 + look.y * 1.2, player.getZ() + look.z * 1.2);
-                shell.shootFromRotation(player, player.getXRot(), player.getYRot(), 0.0f, 3.2f, 0.5f);
+                shell.setPos(
+                        player.getX() + look.x * 1.4,
+                        player.getEyeY() - 0.1 + look.y * 1.4,
+                        player.getZ() + look.z * 1.4
+                );
+                shell.shootFromRotation(player, player.getXRot(), player.getYRot(), 0.0f, 3.2f, 0.3f);
                 level.addFreshEntity(shell);
 
                 level.playSound(null, player.blockPosition(), SoundEvents.GENERIC_EXPLODE, SoundSource.PLAYERS, 1.5f, 0.6f);
@@ -78,6 +94,8 @@ public class TankMod {
     }
 
     public static class TankShellEntity extends ThrowableProjectile {
+        private int ageTicks = 0;
+
         public TankShellEntity(EntityType<? extends ThrowableProjectile> type, Level level) {
             super(type, level);
         }
@@ -93,6 +111,10 @@ public class TankMod {
         @Override
         public void tick() {
             super.tick();
+            ageTicks++;
+            if (ageTicks <= 3) {
+                return;
+            }
             if (this.level() instanceof ServerLevel serverLevel) {
                 serverLevel.sendParticles(ParticleTypes.SMOKE, this.getX(), this.getY(), this.getZ(), 2, 0.05, 0.05, 0.05, 0.01);
                 serverLevel.sendParticles(ParticleTypes.FLAME, this.getX(), this.getY(), this.getZ(), 1, 0.02, 0.02, 0.02, 0.01);
@@ -102,8 +124,15 @@ public class TankMod {
         @Override
         protected void onHit(HitResult result) {
             super.onHit(result);
-            if (!this.level().isClientSide) {
-                this.level().explode(this.getOwner(), this.getX(), this.getY(), this.getZ(), 4.0f, Level.ExplosionInteraction.TNT);
+            if (!this.level().isClientSide && ageTicks > 3) {
+                this.level().explode(
+                        this.getOwner(),
+                        this.getX(),
+                        this.getY(),
+                        this.getZ(),
+                        4.0f,
+                        Level.ExplosionInteraction.NONE
+                );
                 this.discard();
             }
         }
