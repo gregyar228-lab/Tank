@@ -1,0 +1,25 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+
+[[mods]]
+modId="tankmod"
+version="1.0.0"
+displayName="Tank Mod 1.20.1"
+description='''
+Tank cannon and explosive shells for Minecraft 1.20.1 Forge.
+'''
+
+[[dependencies.tankmod]]
+    modId="forge"
+    mandatory=true
+    versionRange="[47,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.tankmod]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.20,1.21)"
+    ordering="NONE"
+    side="BOTH"
